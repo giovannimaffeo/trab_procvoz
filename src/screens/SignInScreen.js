@@ -1,37 +1,41 @@
-import { SafeAreaView, StyleSheet, Text, TextInput, View, KeyboardAvoidingView, TouchableOpacity, TouchableWithoutFeedback, Keyboard } from "react-native";
+import { StyleSheet, Text, TextInput, View, KeyboardAvoidingView, TouchableOpacity, TouchableWithoutFeedback, Keyboard } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/FontAwesome";
 
-import { w, h } from "./src/utils";
+import { w, h } from "../utils";
 
 export default function SignInScreen() {
+  const navigation = useNavigation();
   return (
-    <View style={styles.container}>
-        <Text style={styles.title}>Hello!</Text>
-        <Text style={styles.subtitle}>Sign in to use your transcription</Text>
-        <KeyboardAvoidingView behavior="position" style={styles.inputsContainer} KeyboardAvoidingView>
-            <TextInput
-            style={styles.input}
-            placeholderTextColor="#fff"
-            placeholder="Username"
-            textAlign="center"
-            />
-            <TextInput
-            style={{ ...styles.input, marginTop: 17 }}
-            placeholderTextColor="#fff"
-            placeholder="Password"
-            textAlign="center"
-            secureTextEntry
-            />
-            <Text style={styles.forgotPasswordText}>Forgot your password?</Text>
-        </KeyboardAvoidingView>
-        <TouchableOpacity style={styles.loginButton}>
-            <Text style={styles.loginButtonText}>Sign in</Text>
-            <View style={styles.iconButtonContainer}> 
-            <Icon name="arrow-right" size={18} color="#fff" />
-            </View>
-        </TouchableOpacity>
-        <Text style={styles.registerButtonText}>No account yet? Create</Text>
-    </View>
+    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+        <View style={styles.container}>
+            <Text style={styles.title}>Hello!</Text>
+            <Text style={styles.subtitle}>Sign in to use your transcription</Text>
+            <KeyboardAvoidingView behavior="position" style={styles.inputsContainer} KeyboardAvoidingView>
+                <TextInput
+                style={styles.input}
+                placeholderTextColor="#fff"
+                placeholder="Username"
+                textAlign="center"
+                />
+                <TextInput
+                style={{ ...styles.input, marginTop: 17 }}
+                placeholderTextColor="#fff"
+                placeholder="Password"
+                textAlign="center"
+                secureTextEntry
+                />
+                <Text style={styles.forgotPasswordText}>Forgot your password?</Text>
+            </KeyboardAvoidingView>
+            <TouchableOpacity style={styles.loginButton} onPress={() => navigation.navigate("Audio")}>
+                <Text style={styles.loginButtonText}>Sign in</Text>
+                <View style={styles.iconButtonContainer}> 
+                <Icon name="arrow-right" size={18} color="#fff" />
+                </View>
+            </TouchableOpacity>
+            <Text style={styles.registerButtonText}>No account yet? Create</Text>
+        </View>
+    </TouchableWithoutFeedback>
   );
 };
 
