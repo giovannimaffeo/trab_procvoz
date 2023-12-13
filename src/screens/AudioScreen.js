@@ -1,42 +1,156 @@
-import { useState } from "react";
-import { StyleSheet, Text, TextInput, View, KeyboardAvoidingView, TouchableOpacity, TouchableWithoutFeedback, Keyboard, SafeAreaView, ScrollView } from "react-native";
+import { useState, useEffect } from "react";
+import { Alert, StyleSheet, Text, TextInput, View, KeyboardAvoidingView, TouchableOpacity, TouchableWithoutFeedback, Keyboard, SafeAreaView, ScrollView } from "react-native";
 import LottieView from 'lottie-react-native';
 import Icon from "react-native-vector-icons/Feather";
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system';
+import OpenAI from "openai";
 
 import { w, h } from "../utils";
+
+const GCP_SPEECH_TO_TEXT_KEY = "" // omitido por segurança
+const CHAT_GPD_API_KEY = "" // omitido por segurança
+const RECORDING_OPTIONS = {
+  android: {
+    extension: '.m4a',
+    outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+    audioEncoder: Audio.AndroidAudioEncoder.AAC,
+    sampleRate: 44100,
+    numberOfChannels: 2,
+    bitRate: 128000,
+  },
+  ios: {
+    extension: '.wav',
+    audioQuality: Audio.IOSAudioQuality.HIGH,
+    sampleRate: 44100,
+    numberOfChannels: 1,
+    bitRate: 128000,
+    linearPCMBitDepth: 16,
+    linearPCMIsBigEndian: false,
+    linearPCMIsFloat: false,
+  },
+  web: {
+
+  }
+};
 
 export default function AudioScreen() {
   const [isPressing, setIsPressing] = useState(false);
   const [numberOfQuestions, setNumberOfQuestions] = useState(0);
+  const [recording, setRecording] = useState(null);
 
-  const questions = [
-    {
-        question: "Como faço para tirar 10 na prova de processamento de voz?",
-        response: `Primeiro estude os conceitos fundamentais, como filtragem, espectrogramas e técnicas de processamento. Esteja atento aos detalhes e demonstre compreensão das aplicações práticas. Por fim, participe ativamente das aulas e busque ajuda quando necessário.`
-    },
-    {
-        question: "Entendi, obrigado pelas reomendações!",
-        response: `De nada! Boa sorte nos seus estudos e na prova de processamento de voz. Se precisar de mais ajuda, estou aqui para responder às suas perguntas. Estude com dedicação e confiança!`
+  const [questions, setQuestions] = useState([]);
+
+  async function handleRecordingStart() {
+    const { granted } = await Audio.getPermissionsAsync();
+    console.log("granted", granted)
+
+    if (granted) {
+      try {
+        const { recording } = await Audio.Recording.createAsync(RECORDING_OPTIONS);
+        setRecording(recording);
+
+      } catch (error) {
+        console.log(error);
+      }
+    };
+  }
+
+  async function handleRecordingStop() {
+    try {
+      await recording?.stopAndUnloadAsync();
+      const recordingFileUri = recording?.getURI();
+
+      if (recordingFileUri) {
+        const base64File = await FileSystem.readAsStringAsync(recordingFileUri, { encoding: FileSystem?.EncodingType?.Base64 });
+        await FileSystem.deleteAsync(recordingFileUri);
+
+        setRecording(null);
+        getTranscription(base64File);
+      } else {
+        Alert.alert("Audio", "Não foi possível obter a gravação.");
+      }
+    } catch (error) {
+      console.log(error);
     }
-  ];
+  }
+
+function getTranscription(base64File) {
+  fetch(`https://speech.googleapis.com/v1/speech:recognize?key=${GCP_SPEECH_TO_TEXT_KEY}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      config: {
+        languageCode: "pt-BR",
+        encoding: "LINEAR16",
+        sampleRateHertz: 41000,
+      },
+      audio: {
+        content: base64File
+      }
+    })
+  })
+    .then(response => response.json())
+    .then((data) => {
+      console.log(data.results[0].alternatives[0].transcript)
+      handleChatGpt(data.results[0].alternatives[0].transcript)
+    })
+    .catch((error) => console.log(error))
+};
+
+function handleChatGpt(question) {
+  const prompt = `
+    Generate keywords in Portuguese for a post about ${question.trim()}.       
+    Replace the spaces in each word with the character "_".
+    Return each item separated by a comma, in lowercase, and without a line break.
+  `;
+
+  fetch("https://api.openai.com/v1/engines/text-davinci-003-playground/completions", {
+    method: 'POST',
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${CHAT_GPD_API_KEY}`
+    },
+    body: JSON.stringify({
+      prompt,
+      temperature: 0.22,
+      max_tokens: 500,
+      top_p: 1,
+      frequency_penalty: 0,
+      presence_penalty: 0,
+    }),
+  })
+    .then(response => response.json())
+    .then((data) => addChat(data.choices[0].text, question))
+    .catch(() => addChat("Não foi possível gerar resposta", question))
+    .finally(() => setIsPressing(false));
+  };
+
+  function addChat(response, question) {
+    setQuestions([...questions, {
+      question,
+      response
+    }])
+  };
   
   const getAudioContainerContent = () => {
     if (isPressing) {
         return (
-            <View style={{marginTop: 100}}>
-                <Text style={styles.recordingText}>Recording...</Text>
-                <LottieView
-                    source={require("../assets/animation_lnwomybg.json")}
-                    height={150}
-                    autoPlay
-                    loop
-                />
-            </View>
+            <TouchableOpacity 
+              style={{marginTop: 100}}
+            >
+              <Text style={styles.recordingText}>Recording...</Text>
+              <LottieView
+                source={require("../assets/animation_lnwomybg.json")}
+                height={150}
+                autoPlay
+                loop
+              />
+            </TouchableOpacity>
         );
     } else if (numberOfQuestions > 0) {
         return (
             <>
-                {questions.slice(0, numberOfQuestions).map((questionObj, index) => 
+                {questions.map((questionObj, index) => 
                     <View key={index}>
                             <View style={{...styles.chatElementContainer, backgroundColor: "#7377FF"}}>
                             <Text style={{ fontWeight: "bold" }}>User</Text>
@@ -62,6 +176,23 @@ export default function AudioScreen() {
     };
   };
 
+  useEffect(() => {
+    Audio
+      .requestPermissionsAsync()
+      .then((granted) => {
+        if (granted) {
+          Audio.setAudioModeAsync({
+            allowsRecordingIOS: true,
+            interruptionModeIOS: 1,
+            playsInSilentModeIOS: true,
+            shouldDuckAndroid: true,
+            interruptionModeAndroid: 1,
+            playThroughEarpieceAndroid: true,
+          });
+        };
+      });
+  }, []);
+
   return (
     <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
         <SafeAreaView style={styles.container}>
@@ -84,7 +215,7 @@ export default function AudioScreen() {
                     {getAudioContainerContent()}
                 </View>
             </ScrollView>
-            <TouchableOpacity style={{...styles.audioButton}} onPressIn={() => setIsPressing(true)} onPressOut={() => (setIsPressing(false), numberOfQuestions < 2 && setNumberOfQuestions(numberOfQuestions + 1))}>
+            <TouchableOpacity style={{...styles.audioButton}} onPressIn={() => (setIsPressing(true), handleRecordingStart())} onPressOut={() => (handleRecordingStop(), numberOfQuestions < 2 && setNumberOfQuestions(numberOfQuestions + 1))}>
                 <Icon name="mic" size={40} color="#585966" />
             </TouchableOpacity>
         </SafeAreaView>
